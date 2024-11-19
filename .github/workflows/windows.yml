@@ -1,0 +1,44 @@
+name: Windows Runner
+on:
+  workflow_dispatch:
+
+jobs:
+  sign:
+    name: Sign Github
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Certificates
+        run: ./gen-cert.ps1
+
+      - name: Test Building
+        run: dotnet build -c Release -p:SignAssembly=true /p:AssemblyOriginatorKeyFile=cert-key.snk 
+
+      - name: Test Running
+        run: dotnet run
+
+      - name: Package a Release
+        run: dotnet pack -o . --no-build
+
+      - name: Sign the Package
+        run: nuget sign -CertificatePath cert.pfx -CertificatePassword sign Program.1.0.0.nupkg
+
+      - name: Inspect Assembly Signature
+        run: |
+            $env:Path += ";C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8.1 Tools\x64"
+            sn -Tp bin/Release/net8.0/Program.dll
+
+      - name: Inspect Package Signature
+        run: nuget verify -All Program.1.0.0.nupkg
+
+      - name: Zip
+        run: Compress-Archive -Path "Program.1.0.0.nupkg","cert.pfx","cert-ca.pfx" -DestinationPath Program-Signed.zip
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.run_number }}
+          files: |
+            Program-Signed.zip

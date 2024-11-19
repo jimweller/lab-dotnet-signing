@@ -1,0 +1,54 @@
+name: Linux Runner
+on:
+  workflow_dispatch:
+
+jobs:
+  sign:
+    name: Sign Github
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup signing tools
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: osslsigncode nuget ca-certificates
+
+      - name: Install dependencies
+        shell: bash
+        run: dotnet restore
+
+      - name: Build
+        shell: bash
+        run: dotnet build
+
+      - name: Run with the dotnet CLI
+        shell: bash
+        run: dotnet run
+
+      - name: Sign binary
+        shell: bash
+        run: |
+          ./gen-cert.sh
+          osslsigncode sign -certs cert.pem -key cert.key -n "Hello Signing" -i https://exampleco.com -in obj/Debug/net8.0/Program.dll -out obj/Debug/net8.0/Program-signed.dll
+          osslsigncode verify -CAfile cert.pem obj/Debug/net8.0/Program-signed.dll
+
+      - name: Package
+        shell: bash
+        run: dotnet pack
+
+      # This does not work on mac and linux w/ mono, but the same certificate does work on windows if the CA cert is in the TRCA store
+      # this is left here for illustration purposes
+      # - name: Sign package
+      #   shell: bash
+      #   run: nuget sign bin/Release/Program.1.0.0.nupkg -CertificatePath ./cert.pfx
+      #
+      # Andrew says this works on linux
+      # dotnet nuget sign package.nupkg  --certificate-path cert.pfx  --certificate-password sign --timestamper http://timestamp.entrust.net/rfc3161ts2
+
